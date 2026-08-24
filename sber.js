@@ -36,7 +36,22 @@ const decodeBody = async (res, body, callback) => {
 	}
 };
 
+let lastRequestTime = 0;
+
 function requestCurrency(callback) {
+	const minIntervalMs = (process.env.UPDATE_CURRENCY_INTERVAL_SEC || 3600) * 1000;
+	const now = Date.now();
+
+	if (now - lastRequestTime < minIntervalMs) {
+		callback({
+			error: `Запрос отклонён: минимальный интервал между запросами к Сберу — ${
+				minIntervalMs / 1000
+			} сек.`,
+		});
+		return;
+	}
+	lastRequestTime = now;
+
 	request(requestOptions, function (err, res, body) {
 		if (err) {
 			log(`Sber request ${err.message} ${body}`);
