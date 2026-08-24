@@ -38,7 +38,8 @@ const formatTimestamp = (timestamp) => {
 const twoRowLegendPlugin = {
 	id: "twoRowLegend",
 	afterDraw(chart) {
-		const rows = chart.config.options.plugins.twoRowLegend?.rows;
+		const legendOptions = chart.config.options.plugins.twoRowLegend;
+		const rows = legendOptions?.rows;
 		if (!rows) return;
 
 		const { ctx, chartArea, width } = chart;
@@ -50,6 +51,18 @@ const twoRowLegendPlugin = {
 		ctx.save();
 		ctx.font = font;
 		ctx.textBaseline = "middle";
+
+		if (legendOptions.isoLabel) {
+			ctx.font = "bold 28px sans-serif";
+			ctx.fillStyle = "#333";
+			ctx.textAlign = "left";
+			ctx.fillText(
+				legendOptions.isoLabel,
+				chartArea.left,
+				chartArea.bottom + LEGEND_HEIGHT / 2,
+			);
+			ctx.font = font;
+		}
 
 		rows.forEach((items, rowIndex) => {
 			const y =
@@ -170,6 +183,7 @@ const createChart = (canvas, sellPoints, buyPoints, data, label) => {
 			plugins: {
 				legend: { display: false },
 				twoRowLegend: {
+					isoLabel: label,
 					rows: [
 						[
 							{
