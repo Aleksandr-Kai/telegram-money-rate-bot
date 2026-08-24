@@ -292,7 +292,16 @@ function SberPolling() {
 	);
 }
 
-SberPolling();
+// Не опрашиваем Сбер сразу при старте, если предыдущий запрос (по сохранённой
+// истории) был недавно — например, при частых перезапусках во время отладки
+const lastRequestTimestamps = Object.values(store.currencyList)
+	.map((currency) => currency.history?.at(-1)?.timeStamp || 0);
+const lastRequestTimestamp = Math.max(0, ...lastRequestTimestamps);
+const updateIntervalMs = (process.env.UPDATE_CURRENCY_INTERVAL_SEC || 3600) * 1000;
+const sinceLastRequest = Date.now() - lastRequestTimestamp;
+const initialDelay = Math.max(0, updateIntervalMs - sinceLastRequest);
+
+SberPollingTimer = setTimeout(SberPolling, initialDelay);
 
 console.log(
 	`Бот запущен. Интервал опроса сбера: ${process.env.UPDATE_CURRENCY_INTERVAL_SEC} секунд`,
