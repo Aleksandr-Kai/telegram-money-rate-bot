@@ -54,8 +54,6 @@ const twoRowLegendPlugin = {
 		ctx.font = font;
 		ctx.textBaseline = "middle";
 
-		let legendStartX = chartArea.left;
-
 		if (legendOptions.isoLabel) {
 			ctx.font = "bold 28px sans-serif";
 			ctx.fillStyle = "#333";
@@ -63,21 +61,6 @@ const twoRowLegendPlugin = {
 			ctx.fillText(
 				legendOptions.isoLabel,
 				chartArea.left,
-				chartArea.bottom + LEGEND_HEIGHT / 2,
-			);
-			legendStartX =
-				chartArea.left + ctx.measureText(legendOptions.isoLabel).width;
-			ctx.font = font;
-		}
-
-		if (legendOptions.delta !== undefined) {
-			const deltaGap = 30;
-			ctx.font = "bold 22px sans-serif";
-			ctx.fillStyle = "#333";
-			ctx.textAlign = "left";
-			ctx.fillText(
-				`Δ ${formatValue(legendOptions.delta)}`,
-				legendStartX + deltaGap,
 				chartArea.bottom + LEGEND_HEIGHT / 2,
 			);
 			ctx.font = font;
@@ -106,6 +89,19 @@ const twoRowLegendPlugin = {
 		const totalWidth =
 			columnWidths.reduce((a, b) => a + b, 0) + itemGap * (columnCount - 1);
 		const startX = (width - totalWidth) / 2;
+
+		if (legendOptions.delta !== undefined) {
+			const deltaGap = 16;
+			ctx.font = font;
+			ctx.fillStyle = "rgb(255, 140, 0)";
+			ctx.textAlign = "right";
+			ctx.fillText(
+				`Δ ${formatValue(legendOptions.delta)}`,
+				startX - deltaGap,
+				chartArea.bottom + LEGEND_HEIGHT / 2,
+			);
+			ctx.textAlign = "left";
+		}
 
 		rows.forEach((items, rowIndex) => {
 			const y =
