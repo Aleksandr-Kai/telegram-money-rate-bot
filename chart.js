@@ -64,6 +64,21 @@ const twoRowLegendPlugin = {
 			ctx.font = font;
 		}
 
+		// Ширина колонки — по самому длинному элементу среди всех строк,
+		// чтобы значки и подписи в разных строках стояли друг под другом
+		const columnCount = rows[0].length;
+		const columnWidths = Array.from({ length: columnCount }, (_, col) =>
+			Math.max(
+				...rows.map(
+					(items) =>
+						swatchWidth + swatchGap + ctx.measureText(items[col].label).width,
+				),
+			),
+		);
+		const totalWidth =
+			columnWidths.reduce((a, b) => a + b, 0) + itemGap * (columnCount - 1);
+		const startX = (width - totalWidth) / 2;
+
 		rows.forEach((items, rowIndex) => {
 			const y =
 				chartArea.bottom +
@@ -71,13 +86,7 @@ const twoRowLegendPlugin = {
 				LEGEND_ROW_HEIGHT * rowIndex +
 				LEGEND_ROW_HEIGHT / 2;
 
-			const itemWidths = items.map(
-				(item) => swatchWidth + swatchGap + ctx.measureText(item.label).width,
-			);
-			const totalWidth =
-				itemWidths.reduce((a, b) => a + b, 0) + itemGap * (items.length - 1);
-
-			let x = (width - totalWidth) / 2;
+			let x = startX;
 
 			items.forEach((item, i) => {
 				const lineY = y;
@@ -102,7 +111,7 @@ const twoRowLegendPlugin = {
 				ctx.fillStyle = "#333";
 				ctx.fillText(item.label, x + swatchWidth + swatchGap, lineY);
 
-				x += itemWidths[i] + itemGap;
+				x += columnWidths[i] + itemGap;
 			});
 		});
 
