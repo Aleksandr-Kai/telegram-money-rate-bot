@@ -19,6 +19,8 @@ const CHART_STYLES = {
 const withAlpha = (rgbColor, alpha) =>
 	rgbColor.replace("rgb(", "rgba(").replace(")", `, ${alpha})`);
 
+const formatValue = (value) => value.toFixed(1);
+
 const LEGEND_ROW_HEIGHT = 30;
 const LEGEND_TOP_PADDING = 26;
 const LEGEND_HEIGHT = LEGEND_TOP_PADDING + LEGEND_ROW_HEIGHT * 2;
@@ -65,15 +67,24 @@ const twoRowLegendPlugin = {
 		}
 
 		// Ширина колонки — по самому длинному элементу среди всех строк,
-		// чтобы значки и подписи в разных строках стояли друг под другом
+		// чтобы значения, значки и подписи в разных строках стояли друг под другом
+		const valueGap = 8;
 		const columnCount = rows[0].length;
-		const columnWidths = Array.from({ length: columnCount }, (_, col) =>
+		const valueWidths = Array.from({ length: columnCount }, (_, col) =>
 			Math.max(
 				...rows.map(
-					(items) =>
-						swatchWidth + swatchGap + ctx.measureText(items[col].label).width,
+					(items) => ctx.measureText(formatValue(items[col].value)).width,
 				),
 			),
+		);
+		const labelWidths = Array.from({ length: columnCount }, (_, col) =>
+			Math.max(
+				...rows.map((items) => ctx.measureText(items[col].label).width),
+			),
+		);
+		const columnWidths = valueWidths.map(
+			(valueWidth, col) =>
+				valueWidth + valueGap + swatchWidth + swatchGap + labelWidths[col],
 		);
 		const totalWidth =
 			columnWidths.reduce((a, b) => a + b, 0) + itemGap * (columnCount - 1);
@@ -90,26 +101,34 @@ const twoRowLegendPlugin = {
 
 			items.forEach((item, i) => {
 				const lineY = y;
+				const swatchX = x + valueWidths[i] + valueGap;
+
+				ctx.setLineDash([]);
+				ctx.fillStyle = "#333";
+				ctx.textAlign = "right";
+				ctx.fillText(formatValue(item.value), x + valueWidths[i], lineY);
+				ctx.textAlign = "left";
+
 				ctx.strokeStyle = item.color;
 				ctx.fillStyle = item.color;
 				ctx.lineWidth = item.point ? 2 : 1;
 				ctx.setLineDash(item.dash || []);
 
 				ctx.beginPath();
-				ctx.moveTo(x, lineY);
-				ctx.lineTo(x + swatchWidth, lineY);
+				ctx.moveTo(swatchX, lineY);
+				ctx.lineTo(swatchX + swatchWidth, lineY);
 				ctx.stroke();
 
 				if (item.point) {
 					ctx.setLineDash([]);
 					ctx.beginPath();
-					ctx.arc(x + swatchWidth / 2, lineY, 3, 0, Math.PI * 2);
+					ctx.arc(swatchX + swatchWidth / 2, lineY, 3, 0, Math.PI * 2);
 					ctx.fill();
 				}
 
 				ctx.setLineDash([]);
 				ctx.fillStyle = "#333";
-				ctx.fillText(item.label, x + swatchWidth + swatchGap, lineY);
+				ctx.fillText(item.label, swatchX + swatchWidth + swatchGap, lineY);
 
 				x += columnWidths[i] + itemGap;
 			});
@@ -197,15 +216,18 @@ const createChart = (canvas, sellPoints, buyPoints, data, label) => {
 						[
 							{
 								label: CHART_STYLES.rateSell.label,
+								value: sellPoints[sellPoints.length - 1].y,
 								color: CHART_STYLES.rateSell.borderColor,
 								point: true,
 							},
 							{
 								label: "Максимум",
+								value: data.maxSell,
 								color: withAlpha(CHART_STYLES.rateSell.borderColor, 0.8),
 							},
 							{
 								label: "Минимум",
+								value: data.minSell,
 								color: withAlpha(CHART_STYLES.rateSell.borderColor, 0.8),
 								dash: [5, 5],
 							},
@@ -213,15 +235,18 @@ const createChart = (canvas, sellPoints, buyPoints, data, label) => {
 						[
 							{
 								label: CHART_STYLES.rateBuy.label,
+								value: buyPoints[buyPoints.length - 1].y,
 								color: CHART_STYLES.rateBuy.borderColor,
 								point: true,
 							},
 							{
 								label: "Максимум",
+								value: data.maxBuy,
 								color: withAlpha(CHART_STYLES.rateBuy.borderColor, 0.8),
 							},
 							{
 								label: "Минимум",
+								value: data.minBuy,
 								color: withAlpha(CHART_STYLES.rateBuy.borderColor, 0.8),
 								dash: [5, 5],
 							},
