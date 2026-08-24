@@ -1,7 +1,7 @@
 const Chart = require("chart.js/auto");
-const { createCanvas, loadImage } = require("canvas");
+const { createCanvas } = require("canvas");
 
-// Константы для стилей графиков
+// Константы для стилей графиков (купить/продать — с точки зрения пользователя)
 const CHART_STYLES = {
 	rateSell: {
 		label: "Купить",
@@ -13,17 +13,17 @@ const CHART_STYLES = {
 		borderColor: "rgb(0, 104, 173)",
 		backgroundColor: "rgba(0, 104, 173, 0.2)",
 	},
-	max: {
-		borderColor: "rgb(255, 0, 0)",
-		backgroundColor: "rgba(255, 0, 0, 0.2)",
-		borderDash: [5, 5],
-	},
-	min: {
-		borderColor: "rgb(0, 0, 255)",
-		backgroundColor: "rgba(0, 0, 255, 0.2)",
-		borderDash: [5, 5],
-	},
 };
+
+// Полупрозрачный вариант цвета линии курса для линий макс/мин
+const withAlpha = (rgbColor, alpha) =>
+	rgbColor.replace("rgb(", "rgba(").replace(")", `, ${alpha})`);
+
+const formatValue = (value) => value.toFixed(1);
+
+const LEGEND_ROW_HEIGHT = 30;
+const LEGEND_TOP_PADDING = 26;
+const LEGEND_HEIGHT = LEGEND_TOP_PADDING + LEGEND_ROW_HEIGHT * 2;
 
 // Функция для форматирования временной метки
 const formatTimestamp = (timestamp) => {
@@ -35,48 +35,239 @@ const formatTimestamp = (timestamp) => {
 	});
 };
 
-// Функция для создания графика
-const createChart = (canvas, points, max, min, label, styles) => {
+// Плагин, рисующий легенду под графиком в две строки:
+// сверху — линии "Купить", снизу — линии "Продать"
+const twoRowLegendPlugin = {
+	id: "twoRowLegend",
+	afterDraw(chart) {
+		const legendOptions = chart.config.options.plugins.twoRowLegend;
+		const rows = legendOptions?.rows;
+		if (!rows) return;
+
+		const { ctx, chartArea, width } = chart;
+		const font = "16px sans-serif";
+		const swatchWidth = 26;
+		const swatchGap = 8;
+		const itemGap = 28;
+
+		ctx.save();
+		ctx.font = font;
+		ctx.textBaseline = "middle";
+
+		if (legendOptions.isoLabel) {
+			ctx.font = "bold 28px sans-serif";
+			ctx.fillStyle = "#333";
+			ctx.textAlign = "left";
+			ctx.fillText(
+				legendOptions.isoLabel,
+				chartArea.left,
+				chartArea.bottom + LEGEND_HEIGHT / 2,
+			);
+			ctx.font = font;
+		}
+
+		// Ширина колонки — по самому длинному элементу среди всех строк,
+		// чтобы значения, значки и подписи в разных строках стояли друг под другом
+		const valueGap = 8;
+		const columnCount = rows[0].length;
+		const valueWidths = Array.from({ length: columnCount }, (_, col) =>
+			Math.max(
+				...rows.map(
+					(items) => ctx.measureText(formatValue(items[col].value)).width,
+				),
+			),
+		);
+		const labelWidths = Array.from({ length: columnCount }, (_, col) =>
+			Math.max(
+				...rows.map((items) => ctx.measureText(items[col].label).width),
+			),
+		);
+		const columnWidths = valueWidths.map(
+			(valueWidth, col) =>
+				valueWidth + valueGap + swatchWidth + swatchGap + labelWidths[col],
+		);
+		const totalWidth =
+			columnWidths.reduce((a, b) => a + b, 0) + itemGap * (columnCount - 1);
+		const startX = (width - totalWidth) / 2;
+
+		if (legendOptions.delta !== undefined) {
+			const deltaGap = 16;
+			ctx.font = font;
+			ctx.fillStyle = "rgb(255, 140, 0)";
+			ctx.textAlign = "right";
+			ctx.fillText(
+				`Δ ${formatValue(legendOptions.delta)}`,
+				startX - deltaGap,
+				chartArea.bottom + LEGEND_HEIGHT / 2,
+			);
+			ctx.textAlign = "left";
+		}
+
+		rows.forEach((items, rowIndex) => {
+			const y =
+				chartArea.bottom +
+				LEGEND_TOP_PADDING +
+				LEGEND_ROW_HEIGHT * rowIndex +
+				LEGEND_ROW_HEIGHT / 2;
+
+			let x = startX;
+
+			items.forEach((item, i) => {
+				const lineY = y;
+				const swatchX = x + valueWidths[i] + valueGap;
+
+				ctx.setLineDash([]);
+				ctx.fillStyle = "#333";
+				ctx.textAlign = "right";
+				ctx.fillText(formatValue(item.value), x + valueWidths[i], lineY);
+				ctx.textAlign = "left";
+
+				ctx.strokeStyle = item.color;
+				ctx.fillStyle = item.color;
+				ctx.lineWidth = item.point ? 2 : 1;
+				ctx.setLineDash(item.dash || []);
+
+				ctx.beginPath();
+				ctx.moveTo(swatchX, lineY);
+				ctx.lineTo(swatchX + swatchWidth, lineY);
+				ctx.stroke();
+
+				if (item.point) {
+					ctx.setLineDash([]);
+					ctx.beginPath();
+					ctx.arc(swatchX + swatchWidth / 2, lineY, 3, 0, Math.PI * 2);
+					ctx.fill();
+				}
+
+				ctx.setLineDash([]);
+				ctx.fillStyle = "#333";
+				ctx.fillText(item.label, swatchX + swatchWidth + swatchGap, lineY);
+
+				x += columnWidths[i] + itemGap;
+			});
+		});
+
+		ctx.restore();
+	},
+};
+
+// Функция для создания графика: курс "Купить" и "Продать" на одной оси
+const createChart = (canvas, sellPoints, buyPoints, data, label) => {
 	const ctx = canvas.getContext("2d");
-	const timestamps = points.map((p) => p.x);
-	const minMaxLine = [
-		{ x: timestamps[0], y: null },
-		{ x: timestamps[timestamps.length - 1], y: null },
+	const timestamps = sellPoints.map((p) => p.x);
+	const refLine = (y) => [
+		{ x: timestamps[0], y },
+		{ x: timestamps[timestamps.length - 1], y },
 	];
+
 	return new Chart(ctx, {
 		type: "line",
 		data: {
 			datasets: [
 				{
-					label: `${styles.label} ${label}`,
-					data: points,
-					borderColor: styles.borderColor,
-					backgroundColor: styles.backgroundColor,
+					label: `${CHART_STYLES.rateSell.label} ${label}`,
+					data: sellPoints,
+					borderColor: CHART_STYLES.rateSell.borderColor,
+					backgroundColor: CHART_STYLES.rateSell.backgroundColor,
 					fill: false,
 					pointRadius: 3,
 				},
 				{
-					label: "Максимум",
-					data: minMaxLine.map((p) => ({ ...p, y: max })),
-					borderColor: CHART_STYLES.max.borderColor,
-					backgroundColor: CHART_STYLES.max.backgroundColor,
+					label: `${CHART_STYLES.rateBuy.label} ${label}`,
+					data: buyPoints,
+					borderColor: CHART_STYLES.rateBuy.borderColor,
+					backgroundColor: CHART_STYLES.rateBuy.backgroundColor,
 					fill: false,
-					borderDash: CHART_STYLES.max.borderDash,
+					pointRadius: 3,
+				},
+				{
+					label: "Максимум (Купить)",
+					data: refLine(data.maxSell),
+					borderColor: withAlpha(CHART_STYLES.rateSell.borderColor, 0.8),
+					fill: false,
+					borderWidth: 1,
 					pointStyle: false,
 				},
 				{
-					label: "Минимум",
-					data: minMaxLine.map((p) => ({ ...p, y: min })),
-					borderColor: CHART_STYLES.min.borderColor,
-					backgroundColor: CHART_STYLES.min.backgroundColor,
+					label: "Минимум (Купить)",
+					data: refLine(data.minSell),
+					borderColor: withAlpha(CHART_STYLES.rateSell.borderColor, 0.8),
 					fill: false,
-					borderDash: CHART_STYLES.min.borderDash,
+					borderDash: [5, 5],
+					borderWidth: 1,
+					pointStyle: false,
+				},
+				{
+					label: "Максимум (Продать)",
+					data: refLine(data.maxBuy),
+					borderColor: withAlpha(CHART_STYLES.rateBuy.borderColor, 0.8),
+					fill: false,
+					borderWidth: 1,
+					pointStyle: false,
+				},
+				{
+					label: "Минимум (Продать)",
+					data: refLine(data.minBuy),
+					borderColor: withAlpha(CHART_STYLES.rateBuy.borderColor, 0.8),
+					fill: false,
+					borderDash: [5, 5],
+					borderWidth: 1,
 					pointStyle: false,
 				},
 			],
 		},
 		options: {
 			responsive: false,
+			layout: {
+				padding: { bottom: LEGEND_HEIGHT },
+			},
+			plugins: {
+				legend: { display: false },
+				twoRowLegend: {
+					isoLabel: label,
+					delta: data.delta,
+					rows: [
+						[
+							{
+								label: CHART_STYLES.rateSell.label,
+								value: sellPoints[sellPoints.length - 1].y,
+								color: CHART_STYLES.rateSell.borderColor,
+								point: true,
+							},
+							{
+								label: "Максимум",
+								value: data.maxSell,
+								color: withAlpha(CHART_STYLES.rateSell.borderColor, 0.8),
+							},
+							{
+								label: "Минимум",
+								value: data.minSell,
+								color: withAlpha(CHART_STYLES.rateSell.borderColor, 0.8),
+								dash: [5, 5],
+							},
+						],
+						[
+							{
+								label: CHART_STYLES.rateBuy.label,
+								value: buyPoints[buyPoints.length - 1].y,
+								color: CHART_STYLES.rateBuy.borderColor,
+								point: true,
+							},
+							{
+								label: "Максимум",
+								value: data.maxBuy,
+								color: withAlpha(CHART_STYLES.rateBuy.borderColor, 0.8),
+							},
+							{
+								label: "Минимум",
+								value: data.minBuy,
+								color: withAlpha(CHART_STYLES.rateBuy.borderColor, 0.8),
+								dash: [5, 5],
+							},
+						],
+					],
+				},
+			},
 			scales: {
 				x: {
 					type: "linear",
@@ -91,63 +282,26 @@ const createChart = (canvas, points, max, min, label, styles) => {
 				},
 			},
 		},
+		plugins: [twoRowLegendPlugin],
 	});
-};
-
-// Функция для объединения двух изображений в одно
-const combineImages = async (image1, image2) => {
-	const width = image1.width; // Ширина изображений (одинаковая)
-	const height = image1.height + image2.height; // Высота нового изображения
-
-	// Создаем новый canvas для объединенного изображения
-	const combinedCanvas = createCanvas(width, height);
-	const ctx = combinedCanvas.getContext("2d");
-
-	// Рисуем первое изображение
-	ctx.drawImage(image1, 0, 0);
-	// Рисуем второе изображение под первым
-	ctx.drawImage(image2, 0, image1.height);
-
-	// Возвращаем объединенное изображение в виде буфера
-	return combinedCanvas.toBuffer("image/png");
 };
 
 const buildCharts = async (data, label) => {
 	try {
 		const history = data.history;
 
-		// График для rateSell
-		const canvasSell = createCanvas(1080, 600);
-		const chartSell = createChart(
-			canvasSell,
+		const canvas = createCanvas(1080, 600 + LEGEND_HEIGHT);
+		const chart = createChart(
+			canvas,
 			history.map((item) => ({ x: item.timeStamp, y: item.rateSell })),
-			data.maxSell,
-			data.minSell,
-			label,
-			CHART_STYLES.rateSell
-		);
-		const bufferSell = canvasSell.toBuffer("image/png");
-		chartSell.destroy(); // Освобождаем ресурсы
-
-		// График для rateBuy
-		const canvasBuy = createCanvas(1080, 600);
-		const chartBuy = createChart(
-			canvasBuy,
 			history.map((item) => ({ x: item.timeStamp, y: item.rateBuy })),
-			data.maxBuy,
-			data.minBuy,
+			data,
 			label,
-			CHART_STYLES.rateBuy
 		);
-		const bufferBuy = canvasBuy.toBuffer("image/png");
-		chartBuy.destroy(); // Освобождаем ресурсы
+		const buffer = canvas.toBuffer("image/png");
+		chart.destroy();
 
-		// Загружаем изображения в canvas
-		const imageSell = await loadImage(bufferSell);
-		const imageBuy = await loadImage(bufferBuy);
-
-		// Объединяем изображения
-		return await combineImages(imageSell, imageBuy);
+		return buffer;
 	} catch (error) {
 		console.error("Ошибка при создании или отправке графиков:", error);
 	}
