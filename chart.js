@@ -54,6 +54,8 @@ const twoRowLegendPlugin = {
 		ctx.font = font;
 		ctx.textBaseline = "middle";
 
+		let legendStartX = chartArea.left;
+
 		if (legendOptions.isoLabel) {
 			ctx.font = "bold 28px sans-serif";
 			ctx.fillStyle = "#333";
@@ -61,6 +63,21 @@ const twoRowLegendPlugin = {
 			ctx.fillText(
 				legendOptions.isoLabel,
 				chartArea.left,
+				chartArea.bottom + LEGEND_HEIGHT / 2,
+			);
+			legendStartX =
+				chartArea.left + ctx.measureText(legendOptions.isoLabel).width;
+			ctx.font = font;
+		}
+
+		if (legendOptions.delta !== undefined) {
+			const deltaGap = 30;
+			ctx.font = "bold 22px sans-serif";
+			ctx.fillStyle = "#333";
+			ctx.textAlign = "left";
+			ctx.fillText(
+				`Δ ${formatValue(legendOptions.delta)}`,
+				legendStartX + deltaGap,
 				chartArea.bottom + LEGEND_HEIGHT / 2,
 			);
 			ctx.font = font;
@@ -212,6 +229,7 @@ const createChart = (canvas, sellPoints, buyPoints, data, label) => {
 				legend: { display: false },
 				twoRowLegend: {
 					isoLabel: label,
+					delta: data.delta,
 					rows: [
 						[
 							{
