@@ -1,8 +1,12 @@
+require("./logger").initLogging();
+
 const { isNumber } = require("chart.js/helpers");
 const { BotStore } = require("./botstore");
 const { buildCharts } = require("./chart");
 const { requestCurrency } = require("./sber");
 const tg = require("./tgservice");
+const { handleUpdateDocument } = require("./updater");
+const { getLogFilePath } = require("./logger");
 require("dotenv").config();
 
 const store = new BotStore();
@@ -126,6 +130,31 @@ tg.AddHandler(
 	},
 	"Получить список пользователей (АДМИН)",
 );
+
+tg.AddHandler(
+	/\/getlogs/,
+	async (msg) => {
+		const userId = msg.from.id;
+		if (!msg.isAdmin) {
+			console.log(`Запрос логов, отказано пользователю ${userId}`);
+			return;
+		}
+
+		const logFilePath = getLogFilePath();
+		try {
+			await tg.SendDocument(userId, logFilePath, "Текущий лог бота");
+		} catch (error) {
+			await tg.SendMessage(userId, `Не удалось отправить лог: ${error.message}`);
+		}
+	},
+	"Получить файл лога бота (АДМИН)",
+);
+
+tg.OnDocument((msg) => {
+	handleUpdateDocument(msg, store.adminId).catch((error) =>
+		console.error("Ошибка обработки обновления:", error),
+	);
+});
 
 tg.UpdateComands();
 

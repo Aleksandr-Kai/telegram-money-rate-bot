@@ -74,10 +74,30 @@ async function SendMessage(id, msg) {
 	await bot.sendMessage(id, msg);
 } // botSendMessage
 
+async function DownloadDocument(fileId, destDir) {
+	return await bot.downloadFile(fileId, destDir);
+}
+
+async function StopPolling() {
+	await bot.stopPolling();
+}
+
+function OnDocument(callback) {
+	if (typeof callback !== "function") {
+		console.log("OnDocument: callback должен быть функцией");
+		return;
+	}
+	bot.on("document", callback);
+}
+
 async function SendImage(chatId, chartsImage, caption) {
 	await bot.sendPhoto(chatId, chartsImage, { caption }).catch((error) => {
 		console.error(`Ошибка отправки графика`, error);
 	});
+}
+
+async function SendDocument(chatId, filePath, caption) {
+	await bot.sendDocument(chatId, filePath, { caption });
 }
 
 async function UpdateComands() {
@@ -112,4 +132,15 @@ function use(callback) {
 	middlewares.push(callback);
 }
 
-module.exports = { BotInit, SendMessage, SendImage, UpdateComands, AddHandler, use };
+module.exports = {
+	BotInit,
+	SendMessage,
+	SendImage,
+	SendDocument,
+	UpdateComands,
+	AddHandler,
+	use,
+	OnDocument,
+	DownloadDocument,
+	StopPolling,
+};
