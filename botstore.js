@@ -146,6 +146,15 @@ class BotStore {
 		return this.users[userId];
 	}
 
+	removeUser(userId) {
+		if (!this.users[userId]) return false;
+
+		delete this.users[userId];
+		delete this.alarms[userId];
+		this.saveUsersToFile();
+		return true;
+	}
+
 	setUserReport(userId, state) {
 		if (this.users[userId]) {
 			this.users[userId].report = state === "enable";

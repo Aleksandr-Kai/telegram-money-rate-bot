@@ -160,6 +160,37 @@ tg.UpdateComands();
 
 tg.use((msg) => store.storeUser(msg));
 
+function notifyUser(userId, message) {
+	return tg.SendMessage(userId, message).catch((error) => {
+		const tgError = error?.response?.body;
+
+		if (
+			tgError?.error_code === 403 &&
+			tgError?.description?.includes("bot was blocked by the user")
+		) {
+			const user = store.getUser(userId);
+			const name = user
+				? `${user.firstName || ""} ${user.lastName || ""}`.trim()
+				: null;
+
+			store.removeUser(userId);
+			console.warn(`User ${userId} blocked the bot, удалён из users.json`);
+
+			if (store.adminId) {
+				tg.SendMessage(
+					store.adminId,
+					`Пользователь заблокировал бота и был удалён:\n` +
+						`id: ${userId}` +
+						(name ? `\nимя: ${name}` : ""),
+				).catch(() => {}); // тут молча, чтоб не зациклиться
+			}
+			return;
+		}
+
+		console.error(`Ошибка отправки сообщения пользователю ${userId}:`, error);
+	});
+} // notifyUser
+
 function checkAlarms(rateIso, rateSell, rateBuy) {
 	// Приводим rateIso к верхнему регистру для единообразия
 	const iso = rateIso.toUpperCase();
@@ -179,7 +210,7 @@ function checkAlarms(rateIso, rateSell, rateBuy) {
 			delta &&
 			(Math.abs(rateBuy - prevBuy) > delta || Math.abs(rateSell - prevSell) > delta)
 		) {
-			tg.SendMessage(
+			notifyUser(
 				userId,
 				`${iso}: изменение курса более чем на ${delta}.\nКупить: ${rateSell}\nПродать: ${rateBuy}`,
 			);
@@ -190,7 +221,7 @@ function checkAlarms(rateIso, rateSell, rateBuy) {
 			(prevSell < threshold && rateSell >= threshold) ||
 			(prevSell > threshold && rateSell <= threshold)
 		) {
-			tg.SendMessage(
+			notifyUser(
 				userId,
 				`${iso}: курс для покупки пересек пороговое значение ${threshold}. Текущий курс: ${rateSell}`,
 			);
@@ -201,7 +232,7 @@ function checkAlarms(rateIso, rateSell, rateBuy) {
 			(prevBuy < threshold && rateBuy >= threshold) ||
 			(prevBuy > threshold && rateBuy <= threshold)
 		) {
-			tg.SendMessage(
+			notifyUser(
 				userId,
 				`${iso}: курс для продажи пересек пороговое значение ${threshold}. Текущий курс: ${rateBuy}`,
 			);
@@ -214,11 +245,9 @@ function checkAlarms(rateIso, rateSell, rateBuy) {
 } // checkAlarms
 
 function reportRateEvent(event) {
-	for (userId in store.users) {
+	for (const userId in store.users) {
 		if (store.getUser(userId).report) {
-			tg.SendMessage(userId, `${event.message} [${event.data.toFixed(2)}]`).catch(
-				(error) => console.error("Ошибка при отправке rateEvent:", error),
-			);
+			notifyUser(userId, `${event.message} [${event.data.toFixed(2)}]`);
 		}
 	}
 } // reportRateEvent
@@ -336,35 +365,8 @@ console.log(
 	`Бот запущен. Интервал опроса сбера: ${process.env.UPDATE_CURRENCY_INTERVAL_SEC} секунд`,
 );
 
-for (const userId in store.users) {
-	tg.SendMessage(userId, "Бот был перезапущен").catch((error) => {
-		const tgError = error?.response?.body;
-
-		if (
-			tgError?.error_code === 403 &&
-			tgError?.description?.includes("bot was blocked by the user")
-		) {
-			// 1. короткий лог
-			console.warn(`User ${userId} blocked the bot`);
-
-			// 2. информация о пользователе
-			const user = store.users[userId];
-			const name = user
-				? `${user.firstName || ""} ${user.lastName || ""}`.trim()
-				: null;
-
-			// 3. уведомление админу
-			tg.SendMessage(
-				store.adminId,
-				`Пользователь заблокировал бота:\n` +
-					`id: ${userId}` +
-					(name ? `\nимя: ${name}` : ""),
-			).catch(() => {}); // тут молча, чтоб не зациклиться
-
-			return;
-		}
-
-		// все остальные ошибки — одной строкой
-		console.error(`Ошибка отправки сообщения пользователю ${userId}`);
+if (store.adminId) {
+	tg.SendMessage(store.adminId, "Бот был перезапущен").catch((error) => {
+		console.error(`Ошибка отправки сообщения администратору:`, error);
 	});
 }
